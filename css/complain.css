@@ -1,0 +1,12 @@
+.pointer{
+	color:#417EB7;
+	cursor:pointer
+}
+.pointer1{
+	color:red;
+	cursor:pointer
+}
+.referOther a{
+	color: blue;
+    margin: 0 30px 0 30px;
+}
