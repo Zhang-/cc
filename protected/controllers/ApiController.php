@@ -943,12 +943,144 @@ class ApiController extends Controller
 					$orderInfo['driverInfo'] = $this->loadDriverModel($orderInfo['did']);
 				}
 
+				$orderEvaluation = $this->loadEvaluationModel($oid);
+
+				$orderInfo['evaluation'] = $orderEvaluation ? $orderEvaluation : [];
+
 				$userCache->set($cacheKey, json_encode($orderInfo)); //cache 用户所有订单
 				$userCache->expire($cacheKey, 1800);
 			}
 		}
 
 		$this->_outPut($orderInfo);
+	}
+
+	/** 
+	  * @name   订单评价
+	  * @api    index.php?r=Api/EvaluateOrder
+	  *
+	  * @param  int     $oid        //order id
+	  * @param  string  $im         //md5(imsi+imei)
+	  * @param  int     $level      //(1-5) int order evaluation level
+	  * @param  string  $evaluation //json string order evaluation
+	  * @return json    $output     //json data
+	  * 
+	  * @author zhanghy
+	  * @date 2016-05-11 08:30:58
+	  *
+	  **/
+	public function actionEvaluateOrder()
+	{
+		$oid        = intval(Common::request('oid', 'R', 0));   //user id
+		$im         = Common::request('im', 'R', '');           //get md5(imsi+imei) info
+		$level      = intval(Common::request('level', 'R', 0)); //evaluation level
+		$evaluation = Common::request('evaluation', 'R', '');   //order evaluation
+
+		if (!$oid || !$im || !$level || !$evaluation) $this->_doError(1); //缺少参数
+
+		$orderInfo = $this->loadOrderModel($oid, true);
+
+		if ($orderInfo)
+		{
+			if ($orderInfo->o_status != 5)
+			{
+				$this->_doError(51); //订单未完成不能评价
+			}
+		}
+		else
+		{
+			$this->_doError(50); //订单不存在
+		}
+
+		if ($orderEvaluation = $this->loadEvaluationModel($oid))
+		{
+			/*$orderEvaluation->e_time    = NOW_TIME;
+			$orderEvaluation->e_level   = $level;
+			$orderEvaluation->e_content = $evaluation;*/
+			$this->_doError(52); //订单已评价
+		}
+		else
+		{
+			$orderEvaluation =  new OrderEvaluation();
+			$orderEvaluation->attributes = 
+			[	
+				'oid' 		 => $oid,         //order id
+				'e_time' 	 => NOW_TIME,     //evaluate time
+				'e_level'    => $level,       //evaluation level
+				'e_content'  => $evaluation,  //evaluation content
+			];
+		}
+
+		if ($orderEvaluation->save()) 
+		{
+			$userCache = CacheR::getInstance(CacheR::USERDSN);
+			$cacheKey  = PlaceOrderInfo::ORDERINFOKEY . $oid;
+			$userCache->delete($cacheKey);
+
+			$this->_outPut(['oid' => $oid]);
+		}
+		else
+		{
+			$this->_doError(2); //保存失败
+		}
+	}
+
+	/** 
+	  * @name   获取用户历史订单地址
+	  * @api    index.php?r=Api/GetHistoryAddress
+	  *
+	  * @param  int     $tid      //user id
+	  * @param  string  $im       //md5(imsi+imei)
+	  * @param  string  $ostatus  //指定状态的订单 获取全部订单无需此参数 (20 || 0,10,20)
+	  *                            0=>新订单 1=>已被抢 5=>已完成 10=>已取消 20=>已删除
+	  * @param  int     $limit    //条数限制 5
+	  * @return json    $output   //json数据
+	  *
+	  * {"s":200,"d":[{"start":"117.148136,36.669366","startname":"\u5c71\u4e1c\u7701\u6d4e\u5357\u5e02\u5386\u57ce\u533a\u821c\u534e\u8def2000","desname":"[{\"des\":\"36.675001,117.080442\",\"desname\":\"\u6d4e\u5357\u957f\u9014\u6c7d\u8f66\u4e1c\u7ad9\"},{\"des\":\"36.67744,116.997258\",\"desname\":\"\u6d4e\u5357\u7ad9\"}]"},{"start":"117.147721,36.669302","startname":"\u5c71\u4e1c\u7701\u6d4e\u5357\u5e02\u5386\u57ce\u533a\u821c\u534e\u8def893\u53f7","desname":"[{\"desname\":\"\u4e2d\u6d77\u00b7\u5965\u9f99\u89c2\u90b8\",\"des\":\"36.657538,117.138822\"},{\"desname\":\"\u5965\u4f53\u897f\u8def-\u9053\u8def\",\"des\":\"36.654288,117.120991\"}]"},{"start":"117.15448,36.669791","startname":"\u821c\u6cf0\u5e7f\u573a","desname":"[{\"desname\":\"\u5965\u4f53\u897f\u8def-\u9053\u8def\",\"des\":\"117.120991,36.654288\"},{\"desname\":\"\u6d4e\u5357\u5e02\u89e3\u653e\u8def\u7b2c\u4e00\u5c0f\u5b66\",\"des\":\"117.056574,36.66898\"}]"},{"start":"36.657538,117.138822","startname":"\u4e2d\u6d77\u00b7\u5965\u9f99\u89c2\u90b8","desname":"[{\"desname\":\"\u4eba\u6c11\u5546\u573a\",\"des\":\"36.66801,117.010329\"},{\"desname\":\"\u4e07\u8fbe\u5e7f\u573a(\u7ecf\u56db\u8def\u5e97)\",\"des\":\"36.669052,117.009421\"}]"},{"start":"117.129606,36.687837","startname":"\u4e01\u8c6a\u5e7f\u573a","desname":"[{\"desname\":\"\u6cc9\u57ce\u8def\\\/\u8299\u84c9\u8857(\u8def\u53e3)\",\"des\":\"117.029696,36.670992\"},{\"desname\":\"\u4e07\u8fbe\u5e7f\u573a(\u7ecf\u56db\u8def\u5e97)\",\"des\":\"117.009421,36.669052\"},{\"desname\":\"\u4eba\u6c11\u5546\u573a\",\"des\":\"117.010329,36.66801\"}]"}]}
+	  * 
+	  * @author zhanghy
+	  * @date 2016-05-10 22:14:21
+	  *
+	  **/
+	public function actionGetHistoryAddress()
+	{
+		$tid     = intval(Common::request('tid', 'R', 0));  //user id
+		$im      = Common::request('im', 'R', '');          //get md5(imsi+imei) info
+		$ostatus = Common::request('ostatus', 'R', null);   //获取指定状态订单
+		$limit   = intval(Common::request('limit', 'R', 5));//data limit 默认5条
+
+		if (!$tid || !$im || !$limit) $this->_doError(1); //缺少参数
+
+		if (!is_null($ostatus)) $ostatus = explode(',', $ostatus);
+
+		$allOrders = PlaceOrderInfo::model()->findAll(
+			[
+				'select' => ['start', 'startname', 'desname'],
+				'order'  => 'o_time DESC',
+				'limit'  => $limit,
+ 			]
+		);
+
+		$allOrders = HelpTool::getFindAllData($allOrders);
+
+		if ($allOrders)
+		{
+			foreach ($allOrders as &$order)
+			{
+				$order =  
+				[
+					'start'     => $order['start'],
+					'startname' => $order['startname'],
+					'desname'   => $order['desname'],
+				];
+			}
+		}
+		else
+		{
+			$allOrders = [];
+		}
+
+		$this->_outPut($allOrders);
 	}
 
 	/** 
@@ -1115,6 +1247,21 @@ class ApiController extends Controller
 				}
 				return $model;
 			}
+		}
+	}
+
+	public function loadEvaluationModel($oid, $new = null)
+	{
+		
+		$model = OrderEvaluation::model()->findByPk($oid);
+		
+		if(is_null($model))
+		{
+			return null;
+		}
+		else
+		{
+			return $model->getattributes();
 		}
 	}
 
