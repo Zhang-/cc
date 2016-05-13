@@ -20,6 +20,7 @@
  * @property string $delivery_time
  * @property integer $need_porter
  * @property string $o_message
+ * @property integer $is_collected
  */
 class PlaceOrderInfo extends CActiveRecord
 {
@@ -55,7 +56,7 @@ class PlaceOrderInfo extends CActiveRecord
 		// will receive user inputs.
 		return array(
 			array('start, destination', 'required'),
-			array('o_type, o_status, o_time, car_type, need_porter', 'numerical', 'integerOnly'=>true),
+			array('o_type, o_status, o_time, car_type, need_porter, is_collected', 'numerical', 'integerOnly'=>true),
 			array('tid, did, phone_num', 'length', 'max'=>19),
 			array('start, destination', 'length', 'max'=>60),
 			array('startname', 'length', 'max'=>90),
@@ -63,7 +64,7 @@ class PlaceOrderInfo extends CActiveRecord
 			array('desname, delivery_time, o_message', 'safe'),
 			// The following rule is used by search().
 			// Please remove those attributes that should not be searched.
-			array('id, tid, did, start, startname, destination, desname, o_voice, o_type, o_status, o_time, phone_num, car_type, delivery_time, need_porter, o_message', 'safe', 'on'=>'search'),
+			array('id, tid, did, start, startname, destination, desname, o_voice, o_type, o_status, o_time, phone_num, car_type, delivery_time, need_porter, o_message, is_collected', 'safe', 'on'=>'search'),
 		);
 	}
 
@@ -100,6 +101,7 @@ class PlaceOrderInfo extends CActiveRecord
 			'delivery_time' => '配送时间',
 			'need_porter' => '搬运服务',
 			'o_message' => '订单留言',
+			'is_collected' => '线路收藏',
 		);
 	}
 
@@ -131,6 +133,7 @@ class PlaceOrderInfo extends CActiveRecord
 		$criteria->compare('delivery_time',$this->delivery_time,true);
 		$criteria->compare('need_porter',$this->need_porter);
 		$criteria->compare('o_message',$this->o_message,true);
+		$criteria->compare('is_collected',$this->is_collected,true);
 
 		return new CActiveDataProvider($this, array(
 			'criteria'=>$criteria,

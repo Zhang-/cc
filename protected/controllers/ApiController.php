@@ -374,6 +374,7 @@ class ApiController extends Controller
 	  * @param  string  $deliverytime //预约送货时间 选填 YYYY-mm-dd HH:ii:ss
 	  * @param  int     $needporter   //需要搬运 选填 (需要=>1 不需要=>0)
 	  * @param  string  $omessage     //给司机留言 选填
+	  * @param  string  $iscollected  //是否收藏线路 选填 (收藏=>1 不收藏=>0)
 	  * @return json $return          //{"s":200,"d":{"oid":"47"}} 订单id
 	  * 
 	  * @author zhanghy
@@ -395,6 +396,7 @@ class ApiController extends Controller
 		$deliverytime = Common::request('deliverytime', 'R', '');//delivery time
 		$needporter = intval(Common::request('needporter', 'R', 0));//is need porter
 		$omessage = Common::request('omessage', 'R', '');//order message
+		$iscollected = Common::request('iscollected', 'R', '');//is collect this line
 
 		if (!$tid || !$im || !$start || !$phone || !$cartype) $this->_doError(1); //缺少参数
 
@@ -438,6 +440,7 @@ class ApiController extends Controller
 				'delivery_time'=> $deliverytime, //delivery time
 				'need_porter'  => $needporter,   //needporter
 				'o_message'    => $omessage,     //car type
+				'is_collected' => $iscollected?1:0,     //car type
 			];
 
 			if ($model->save() && $model->id) 
@@ -488,11 +491,12 @@ class ApiController extends Controller
 
 		if (!$tid || !$oid || !$im || !$ostatus) $this->_doError(1); //缺少参数
 
-		$thisDriver  = $this->loadDriverModel($tid); //查询库中是否有注册信息
+		$thisDriver  = $this->loadDriverModel($tid, true); //查询库中是否有注册信息
 
 		if (!empty($thisDriver->imsi) && !empty($thisDriver->imei))
 		{
 			$md5Im = md5($thisDriver->imsi.$thisDriver->imei);
+			//HelpTool::logTrace('check im', ['thisDriver'=>$thisDriver, 'im'=>$im], false); //log request data
 			if ($md5Im !== strtolower($im))
 				$this->_doError(22); //验证未通过
 
@@ -544,7 +548,7 @@ class ApiController extends Controller
 	  * @param  string  $start     //起点经纬度 lon,lat
 	  * @param  string  $sname     //起点名称
 	  * @param  json    $desname   //终点集合 [['des'=>'23.13,13.13', 'desname'=>'地点']]
-	  * @param  int     $ostatus   //订单状态 0=>新订单 1=>已被抢 5=>已完成 10=>已取消 20=>已删除
+	  * @param  int     $ostatus   //订单状态 0=>新订单 1=>已被抢 5=>已完成 6=>已评价 10=>已取消 20=>已删除
 	  * @param  int     $cartype   //车型 默认小 1=>小 2=>中 3=>大
 	  * @return json    $output    //{"s":200,"d":{"oid":"47"}} 订单id
 	  * 
@@ -820,7 +824,7 @@ class ApiController extends Controller
 	  * @param  int     $tid      //user id
 	  * @param  string  $im       //md5(imsi+imei)
 	  * @param  string  $ostatus  //指定状态的订单 获取全部订单无需此参数 (20 || 0,10,20)
-	  *                            0=>新订单 1=>已被抢 5=>已完成 10=>已取消 20=>已删除
+	  *                            0=>新订单 1=>已被抢 5=>已完成 6=>已评价 10=>已取消 20=>已删除
 	  * @param  int     $page     //页数 默认为第一页
 	  * @param  int     $limit    //条数限制 默认为20条
 	  * @return json    $output   //json数据
@@ -1012,7 +1016,14 @@ class ApiController extends Controller
 		}
 
 		if ($orderEvaluation->save()) 
-		{
+		{	
+			$orderInfo->o_status = 6; //订单状态改为已评价
+
+			if (!$orderInfo->save())
+			{
+				$this->_doError(2); //保存失败
+			}
+
 			$userCache = CacheR::getInstance(CacheR::USERDSN);
 			$cacheKey  = PlaceOrderInfo::ORDERINFOKEY . $oid;
 			$userCache->delete($cacheKey);
@@ -1032,7 +1043,7 @@ class ApiController extends Controller
 	  * @param  int     $tid      //user id
 	  * @param  string  $im       //md5(imsi+imei)
 	  * @param  string  $ostatus  //指定状态的订单 获取全部订单无需此参数 (20 || 0,10,20)
-	  *                            0=>新订单 1=>已被抢 5=>已完成 10=>已取消 20=>已删除
+	  *                            0=>新订单 1=>已被抢 5=>已完成 6=>已评价 10=>已取消 20=>已删除
 	  * @param  int     $limit    //条数限制 5
 	  * @return json    $output   //json数据
 	  *
@@ -1071,7 +1082,7 @@ class ApiController extends Controller
 				[
 					'start'     => $order['start'],
 					'startname' => $order['startname'],
-					'desname'   => $order['desname'],
+					'desname'   => json_decode($order['desname'], true),
 				];
 			}
 		}
@@ -1090,7 +1101,7 @@ class ApiController extends Controller
 	  * @param  int     $tid      //driver id
 	  * @param  string  $im       //md5(imsi+imei)
 	  * @param  string  $ostatus  //指定状态的订单 获取全部订单无需此参数 (20 || 0,10,20)
-	  *                            0=>新订单 1=>已被抢 5=>已完成 10=>已取消 20=>已删除
+	  *                            0=>新订单 1=>已被抢 5=>已完成 6=>已评价 10=>已取消 20=>已删除
 	  * @param  int     $page     //页数 默认为第一页
 	  * @param  int     $limit    //条数限制 默认为20条
 	  * @return json    $output   //json数据
@@ -1161,6 +1172,109 @@ class ApiController extends Controller
 		$pageData  = HelpTool::getPaging($allOrders, $page, $limit);
 
 		$this->_outPut($pageData);
+	}
+
+	/** 
+	  * @name   用户收藏线路
+	  * @api    index.php?r=Api/CollectLine
+	  *
+	  * @param  int     $oid      //order id
+	  * @param  int     $tid      //driver id
+	  * @param  string  $im       //md5(imsi+imei)
+	  * @return json    $output   //json数据
+	  * 
+	  * @author zhanghy
+	  * @date 2016-05-13 14:15:17
+	  *
+	  **/
+	public function actionCollectLine()
+	{
+		$oid     = intval(Common::request('oid', 'R', 0));  //order id
+		$tid     = intval(Common::request('tid', 'R', 0));  //user id
+		$im      = Common::request('im', 'R', '');          //get md5(imsi+imei) info
+
+		if (!$oid || !$im || !$tid) $this->_doError(1); //缺少参数
+
+		$thisOrder = $this->loadOrderModel($oid, true);    //查询库中是否有订单信息
+
+		if (!$thisOrder) $this->_doError(40); //订单不存在
+
+		if ($thisOrder->tid != $tid) $this->_doError(22); //不是订单用户
+
+		$thisOrder->is_collected = 1;
+
+		if ($thisOrder->save())
+		{
+			$userCache = CacheR::getInstance(CacheR::USERDSN);
+			$userCache->set(CacheR::ORDERINFO.$thisOrder->id, json_encode($thisOrder->getAttributes())); //订单信息
+			$userCache->delete(PlaceOrderInfo::USERORDERSKEY . $tid); //删除订单列表缓存
+			$this->_outPut(['oid' => $thisOrder->id]);
+		}
+		else
+		{
+			$this->_doError(2); //保存失败
+		}
+	}
+
+	/** 
+	  * @name   司机绑定车辆
+	  * @api    index.php?r=Api/BindingCar
+	  *
+	  * @param  int     $did      //driver id
+	  * @param  int     $vin      //车辆 vin码 17位
+	  * @param  int     $binding  //是否绑定车辆 绑定检测为0 确认绑定为1 
+	  * @param  string  $im       //md5(imsi+imei)
+	  * @return json    $output   //json数据
+	  * 
+	  * @author zhanghy
+	  * @date 2016-05-13 14:15:17
+	  *
+	  **/
+	public function actionBindingCar()
+	{
+		$did       = intval(Common::request('did', 'R', 0));  //driver id
+		$vin       = Common::request('vin', 'R', '');         //car vin
+		$binding   = Common::request('binding', 'R', '');     //car vin
+		$im        = Common::request('im', 'R', '');          //get md5(imsi+imei) info
+
+		if (!$did || !$vin || !$im) $this->_doError(1); //缺少参数
+
+		if (!$this->loadDriverModel($did)) $this->_doError(3); //没有司机数据
+
+		$carInfo = Vehicle::model()->find(
+			[
+				'condition'=>'VIN=:VIN',
+    			'params'=>array(':VIN'=>$vin),
+				'limit'  => 1,
+ 			]
+		);
+
+		if ($carInfo)
+		{
+			// 确认绑定
+			if ($binding)
+			{
+				$carInfo = $this->loadVehicleModel($carInfo->id, true); //查询库中是否有车辆
+				$carInfo->ownerId = $did;
+
+				if ($carInfo->save())
+				{
+					$this->_outPut(['carInfo' => $carInfo->getAttributes()]); //成功返回车辆信息
+				}
+				else
+				{
+					$this->_doError(2); //保存失败
+				}
+			}
+			else
+			{
+				$this->_outPut(['carNumber' => $carInfo->carNumber]); //只返回车牌信息
+			}
+		}
+		else
+		{
+			$this->_doError(3); //没有数据
+		}
 	}
 
 	public function loadUserModel($id, $new = null)
@@ -1262,6 +1376,27 @@ class ApiController extends Controller
 		else
 		{
 			return $model->getattributes();
+		}
+	}
+
+	public function loadVehicleModel($vin, $new = null)
+	{
+
+		$carInfo = Vehicle::model()->find(
+			[
+				'condition'=>'VIN=:VIN',
+    			'params'=>array(':VIN'=>$vin),
+				'limit'  => 1,
+ 			]
+		);
+		
+		if(is_null($carInfo))
+		{
+			return null;
+		}
+		else
+		{
+			return $carInfo;
 		}
 	}
 
