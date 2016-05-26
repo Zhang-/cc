@@ -500,6 +500,10 @@ class ApiController extends Controller
 			if ($md5Im !== strtolower($im))
 				$this->_doError(22); //验证未通过
 
+			$ifBinding = $this->checkDriverBinding($tid);
+
+			if (!$ifBinding) $this->_doError(22); //验证未通过
+
 			$thisOrder = $this->loadOrderModel($oid, true);    //查询库中是否有注册信息
 
 			if (!$thisOrder) $this->_doError(40); //订单不存在
@@ -1221,7 +1225,7 @@ class ApiController extends Controller
 	  * @api    index.php?r=Api/BindingCar
 	  *
 	  * @param  int     $did      //driver id
-	  * @param  int     $vin      //车辆 vin码 17位
+	  * @param  string  $vin      //车辆 vin码 17位
 	  * @param  int     $binding  //是否绑定车辆 绑定检测为0 确认绑定为1 
 	  * @param  string  $im       //md5(imsi+imei)
 	  * @return json    $output   //json数据
@@ -1251,10 +1255,15 @@ class ApiController extends Controller
 
 		if ($carInfo)
 		{
+			if ($carInfo->ownerId)
+			{
+				$this->_doError(61); //已绑定 保存失败
+			}
+
 			// 确认绑定
 			if ($binding)
 			{
-				$carInfo = $this->loadVehicleModel($carInfo->id, true); //查询库中是否有车辆
+				$carInfo = $this->loadVehicleModel($carInfo->id); //查询库中是否有车辆
 				$carInfo->ownerId = $did;
 
 				if ($carInfo->save())
@@ -1273,7 +1282,7 @@ class ApiController extends Controller
 		}
 		else
 		{
-			$this->_doError(3); //没有数据
+			$this->_doError(60); //没有数据
 		}
 	}
 
@@ -1379,7 +1388,7 @@ class ApiController extends Controller
 		}
 	}
 
-	public function loadVehicleModel($vin, $new = null)
+	public function getCarInfo($vin, $new = null)
 	{
 
 		$carInfo = Vehicle::model()->find(
@@ -1398,6 +1407,24 @@ class ApiController extends Controller
 		{
 			return $carInfo;
 		}
+	}
+
+	public function checkDriverBinding($did)
+	{
+		$bindingInfo = Vehicle::model()->find(
+			[
+				'condition'=>'ownerId=:ownerId',
+    			'params'=>array(':ownerId'=>$did),
+				'limit'  => 1,
+ 			]
+		);
+
+		return $bindingInfo;
+	}
+
+	public function loadVehicleModel($id, $new = null)
+	{
+		return Vehicle::model()->findByPk($id);
 	}
 
 }
